@@ -23,10 +23,10 @@ public class PaperOnboardingFragment extends Fragment {
     private PaperOnboardingOnChangeListener mOnChangeListener;
     private PaperOnboardingOnRightOutListener mOnRightOutListener;
     private PaperOnboardingOnLeftOutListener mOnLeftOutListener;
-    private ArrayList<PaperOnboardingPage> mElements;
+    private ArrayList<SHPaperOnboardingPage> mElements;
 
 
-    public static PaperOnboardingFragment newInstance(ArrayList<PaperOnboardingPage> elements) {
+    public static PaperOnboardingFragment newInstance(ArrayList<SHPaperOnboardingPage> elements) {
         PaperOnboardingFragment fragment = new PaperOnboardingFragment();
         Bundle args = new Bundle();
         args.putSerializable(ELEMENTS_PARAM, elements);
@@ -38,7 +38,7 @@ public class PaperOnboardingFragment extends Fragment {
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         if (getArguments() != null) {
-            mElements = (ArrayList<PaperOnboardingPage>) getArguments().get(ELEMENTS_PARAM);
+            mElements = (ArrayList<SHPaperOnboardingPage>) getArguments().get(ELEMENTS_PARAM);
         }
     }
 
@@ -57,11 +57,11 @@ public class PaperOnboardingFragment extends Fragment {
         return view;
     }
 
-    public void setElements(ArrayList<PaperOnboardingPage> elements) {
+    public void setElements(ArrayList<SHPaperOnboardingPage> elements) {
         this.mElements = elements;
     }
 
-    public ArrayList<PaperOnboardingPage> getElements() {
+    public ArrayList<SHPaperOnboardingPage> getElements() {
         return mElements;
     }
 
