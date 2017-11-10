@@ -4,8 +4,12 @@ import android.animation.Animator;
 import android.animation.AnimatorSet;
 import android.animation.ObjectAnimator;
 import android.animation.ValueAnimator;
+import android.app.Activity;
 import android.content.Context;
+import android.content.res.AssetManager;
+import android.graphics.Typeface;
 import android.os.Build;
+import android.util.Log;
 import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -14,25 +18,37 @@ import android.view.ViewGroup;
 import android.view.ViewTreeObserver;
 import android.view.animation.AccelerateInterpolator;
 import android.view.animation.DecelerateInterpolator;
+import android.webkit.URLUtil;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.RelativeLayout;
 import android.widget.TextView;
 
+import com.bumptech.glide.Glide;
+import com.bumptech.glide.load.engine.DiskCacheStrategy;
 import com.ramotion.paperonboarding.listeners.AnimatorEndListener;
 import com.ramotion.paperonboarding.listeners.OnSwipeListener;
 import com.ramotion.paperonboarding.listeners.PaperOnboardingOnChangeListener;
 import com.ramotion.paperonboarding.listeners.PaperOnboardingOnLeftOutListener;
 import com.ramotion.paperonboarding.listeners.PaperOnboardingOnRightOutListener;
 import com.ramotion.paperonboarding.utils.PaperOnboardingEngineDefaults;
+import com.squareup.picasso.Picasso;
 
 import java.util.ArrayList;
+import java.util.Locale;
 
 /**
  * Main Paper Onboarding logic
  */
 public class PaperOnboardingEngine implements PaperOnboardingEngineDefaults {
+
+    //Image properties
+    private final int DEFAULT_PAPER_RADIUS = 0;
+    String FONT_WEIGHT_BOLD = "bold";
+    String FONT_WEIGHT_NORMAL = "normal";
+    String FONT_WEIGHT_ITALIC = "italic";
+    String FONT_WEIGHT_BOLD_ITALIC = "bold_italic";
 
     // scale factor for converting dp to px
     private final float dpToPixelsScaleFactor;
@@ -51,7 +67,7 @@ public class PaperOnboardingEngine implements PaperOnboardingEngineDefaults {
     private final Context mAppContext;
 
     // state variables
-    private ArrayList<PaperOnboardingPage> mElements = new ArrayList<>();
+    private ArrayList<SHPaperOnboardingPage> mElements = new ArrayList<>();
     private int mActiveElementIndex = 0;
 
     // params for Pager position calculations, virtually final, but initializes in onGlobalLayoutListener
@@ -72,7 +88,7 @@ public class PaperOnboardingEngine implements PaperOnboardingEngineDefaults {
      * @param contentElements ordered list of prepared content elements for onboarding
      * @param appContext      application context
      */
-    public PaperOnboardingEngine(View rootLayout, ArrayList<PaperOnboardingPage> contentElements, Context appContext) {
+    public PaperOnboardingEngine(View rootLayout, ArrayList<SHPaperOnboardingPage> contentElements, Context appContext) {
         if (contentElements == null || contentElements.isEmpty())
             throw new IllegalArgumentException("No content elements provided");
 
@@ -170,12 +186,12 @@ public class PaperOnboardingEngine implements PaperOnboardingEngineDefaults {
     protected void initializeStartingState() {
         // Create bottom bar icons for all elements with big first icon
         for (int i = 0; i < mElements.size(); i++) {
-            PaperOnboardingPage PaperOnboardingPage = mElements.get(i);
-            ViewGroup bottomBarIconElement = createPagerIconElement(PaperOnboardingPage.getBottomBarIconRes(), i == 0);
+            SHPaperOnboardingPage SHPaperOnboardingPage = mElements.get(i);
+            ViewGroup bottomBarIconElement = createPagerIconElement(SHPaperOnboardingPage, i == 0);
             mPagerIconsContainer.addView(bottomBarIconElement);
         }
         // Initialize first element on screen
-        PaperOnboardingPage activeElement = getActiveElement();
+        SHPaperOnboardingPage activeElement = getActiveElement();
         // initial content texts
         ViewGroup initialContentText = createContentTextView(activeElement);
         mContentTextContainer.addView(initialContentText);
@@ -191,7 +207,7 @@ public class PaperOnboardingEngine implements PaperOnboardingEngineDefaults {
      */
     protected void toggleContent(boolean prev) {
         int oldElementIndex = mActiveElementIndex;
-        PaperOnboardingPage newElement = prev ? toggleToPreviousElement() : toggleToNextElement();
+        SHPaperOnboardingPage newElement = prev ? toggleToPreviousElement() : toggleToNextElement();
 
         if (newElement == null) {
             if (prev && mOnLeftOutListener != null)
@@ -435,17 +451,17 @@ public class PaperOnboardingEngine implements PaperOnboardingEngineDefaults {
     }
 
     /**
-     * @param iconDrawableRes drawable resource for icon
+     * @param SHPaperOnboardingPage drawable resources
      * @param isActive        is active element
      * @return configured pager icon with selected drawable and selected state (active or inactive)
      */
     @SuppressWarnings("SuspiciousNameCombination")
-    protected ViewGroup createPagerIconElement(int iconDrawableRes, boolean isActive) {
+    protected ViewGroup createPagerIconElement(SHPaperOnboardingPage SHPaperOnboardingPage, boolean isActive) {
         LayoutInflater vi = LayoutInflater.from(mAppContext);
         FrameLayout bottomBarElement = (FrameLayout) vi.inflate(R.layout.onboarding_pager_layout, mPagerIconsContainer, false);
         ImageView elementShape = (ImageView) bottomBarElement.getChildAt(0);
         ImageView elementIcon = (ImageView) bottomBarElement.getChildAt(1);
-        elementIcon.setImageResource(iconDrawableRes);
+        setImageResource(SHPaperOnboardingPage, elementIcon, SHPaperOnboardingPage.getBottomBarIconRes());
         if (isActive) {
             LinearLayout.LayoutParams layoutParams = (LinearLayout.LayoutParams) bottomBarElement.getLayoutParams();
             layoutParams.width = mPagerIconsContainer.getLayoutParams().height;
@@ -460,31 +476,176 @@ public class PaperOnboardingEngine implements PaperOnboardingEngineDefaults {
     }
 
     /**
-     * @param PaperOnboardingPage new content page to show
+     * @param SHPaperOnboardingPage new content page to show
      * @return configured view with new content texts
      */
-    protected ViewGroup createContentTextView(PaperOnboardingPage PaperOnboardingPage) {
+    protected ViewGroup createContentTextView(SHPaperOnboardingPage SHPaperOnboardingPage) {
         LayoutInflater vi = LayoutInflater.from(mAppContext);
         ViewGroup contentTextView = (ViewGroup) vi.inflate(R.layout.onboarding_text_content_layout, mContentTextContainer, false);
         TextView contentTitle = (TextView) contentTextView.getChildAt(0);
-        contentTitle.setText(PaperOnboardingPage.getTitleText());
+        contentTitle.setText(SHPaperOnboardingPage.getTitleText());
+        contentTitle.setTextColor(SHPaperOnboardingPage.getTitleColor());
+        if (null != SHPaperOnboardingPage.getTextFont()) {
+            Typeface typeface = getTypeface(SHPaperOnboardingPage.getActivity(), SHPaperOnboardingPage.getTextFont());
+            if (null != typeface) {
+                setFontWeight(contentTitle, typeface, SHPaperOnboardingPage.getTextWeight());
+            } else {
+                setFontWeight(contentTitle, null, SHPaperOnboardingPage.getTextWeight());
+            }
+        } else {
+            setFontWeight(contentTitle, null, SHPaperOnboardingPage.getTextWeight());
+        }
+        if(SHPaperOnboardingPage.getTextSize() > 0) {
+            contentTitle.setTextSize(SHPaperOnboardingPage.getTextSize());
+        }
         TextView contentText = (TextView) contentTextView.getChildAt(1);
-        contentText.setText(PaperOnboardingPage.getDescriptionText());
+        contentText.setText(SHPaperOnboardingPage.getDescriptionText());
+        contentText.setTextColor(SHPaperOnboardingPage.getDescriptionColor());
+        if (null != SHPaperOnboardingPage.getTextFont()) {
+            Typeface typeface = getTypeface(SHPaperOnboardingPage.getActivity(), SHPaperOnboardingPage.getDescriptionFont());
+            if (null != typeface) {
+                setFontWeight(contentText, typeface,  SHPaperOnboardingPage.getDescriptionWeight());
+            } else {
+                setFontWeight(contentText, null, SHPaperOnboardingPage.getDescriptionWeight());
+            }
+        } else {
+            setFontWeight(contentText, null, SHPaperOnboardingPage.getDescriptionWeight());
+        }
+        if(SHPaperOnboardingPage.getContentSize() > 0) {
+            contentText.setTextSize(SHPaperOnboardingPage.getContentSize());
+        }
         return contentTextView;
     }
 
     /**
-     * @param PaperOnboardingPage new content page to show
+     * @param SHPaperOnboardingPage new content page to show
      * @return configured view with new content image
      */
-    protected ImageView createContentIconView(PaperOnboardingPage PaperOnboardingPage) {
+    protected ImageView createContentIconView(SHPaperOnboardingPage SHPaperOnboardingPage) {
         ImageView contentIcon = new ImageView(mAppContext);
-        contentIcon.setImageResource(PaperOnboardingPage.getContentIconRes());
+        setImageResource(SHPaperOnboardingPage, contentIcon, SHPaperOnboardingPage.getContentIconRes());
         FrameLayout.LayoutParams iconLP = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         iconLP.gravity = Gravity.CENTER;
         contentIcon.setLayoutParams(iconLP);
         return contentIcon;
     }
+
+    private void setImageResource(SHPaperOnboardingPage SHPaperOnboardingPage, ImageView contentIcon, String image) {
+        int placeHolderid = SHPaperOnboardingPage.getActivity().getResources().getIdentifier(
+                SHPaperOnboardingPage.getPlaceHolder(),
+                "drawable", SHPaperOnboardingPage.getActivity().getPackageName()
+        );
+        if (placeHolderid == -1 || placeHolderid == 0) {
+            placeHolderid = R.drawable.pointzi_logo;
+        }
+        if (!URLUtil.isHttpUrl(image)
+                && !URLUtil.isHttpsUrl(image)) {
+            int resID = SHPaperOnboardingPage.getActivity().getResources().getIdentifier(
+                    image,
+                    "drawable", SHPaperOnboardingPage.getActivity().getPackageName()
+            );
+            if (-1 == resID || resID == 0) {
+                resID = placeHolderid;
+            }
+            contentIcon.setImageResource(resID);
+        } else {
+             loadThirdPartyLib(
+                SHPaperOnboardingPage.getActivity(),
+                image,
+                placeHolderid,
+                contentIcon,
+                DEFAULT_PAPER_RADIUS
+        );
+        }
+    }
+
+    protected Typeface getTypeface(Activity activity, String fontName) {
+        if (null == fontName)
+            return null;
+        try {
+            AssetManager assetManager = activity.getApplicationContext().getAssets();
+
+            Typeface typeface = Typeface.createFromAsset(
+                    assetManager,
+                    String.format(Locale.US, "fonts/%s", fontName));
+
+            return typeface;
+        } catch (RuntimeException e) {
+
+            String fontNameReplace = fontName.replace(" ", "").toLowerCase();
+            Typeface type = null;
+
+            switch(fontNameReplace)
+            {
+                case "droidsansmono":
+                case "monospace":
+                    type = Typeface.MONOSPACE;
+                    break;
+                case "droidserif":
+                case "serif":
+                    type = Typeface.SERIF;
+                    break;
+                default:
+                    type =  Typeface.SANS_SERIF;
+                    break;
+            }
+            return type;
+        }
+    }
+
+    private void setFontWeight(TextView textView, Typeface typeface, String weight) {
+        if (null == weight)
+            return;
+        try {
+            int wt = Integer.parseInt(weight);
+            if (wt > 400) {
+                textView.setTypeface(typeface, Typeface.BOLD);
+            } else {
+                textView.setTypeface(typeface);
+            }
+        } catch (NumberFormatException e) {
+            if (weight.equalsIgnoreCase(FONT_WEIGHT_BOLD)) {
+                textView.setTypeface(typeface, Typeface.BOLD);
+            }
+            if (weight.equalsIgnoreCase(FONT_WEIGHT_ITALIC)) {
+                textView.setTypeface(typeface, Typeface.ITALIC);
+            }
+            if (weight.equalsIgnoreCase(FONT_WEIGHT_BOLD_ITALIC)) {
+                textView.setTypeface(typeface, Typeface.BOLD_ITALIC);
+            }
+        }
+    }
+    /*
+     Using Glide and Picasso to load WebImages
+    */
+    public static void loadThirdPartyLib(Activity activity, String resourceImg, int placeHolderid, ImageView imageView, int cornerRadiusImg){
+        try {
+            try {
+                Glide.with(activity)
+                        .load(resourceImg)
+                        .diskCacheStrategy(DiskCacheStrategy.NONE)
+                        .skipMemoryCache(true)
+                        .bitmapTransform(new GlideTransformationClass(activity, cornerRadiusImg))
+                        .placeholder(placeHolderid)
+                        .error(placeHolderid)
+                        .into(imageView);
+                return;
+            } catch (NoClassDefFoundError e) {
+                try {
+                    Picasso.with(activity).load(resourceImg)
+                            .placeholder(placeHolderid).fit()
+                            .into(imageView);
+                    return;
+                } catch (NoClassDefFoundError ex) {
+                    Log.w(TAG, "Include compile com.squareup.picasso:picasso:2.5.2 as Library or com.github.bumptech.glide:glide:3.5.2 + " + e.getMessage());
+                }
+            }
+        } catch (Exception e) {
+            Log.e(TAG, e.getMessage());
+        }
+        imageView.setImageResource(placeHolderid);
+    }
+
 
     /**
      * @return index of currently active element
@@ -498,7 +659,7 @@ public class PaperOnboardingEngine implements PaperOnboardingEngineDefaults {
      *
      * @return content for currently active element
      */
-    protected PaperOnboardingPage getActiveElement() {
+    protected SHPaperOnboardingPage getActiveElement() {
         return mElements.size() > mActiveElementIndex ? mElements.get(mActiveElementIndex) : null;
     }
 
@@ -507,7 +668,7 @@ public class PaperOnboardingEngine implements PaperOnboardingEngineDefaults {
      *
      * @return content for previous element
      */
-    protected PaperOnboardingPage toggleToPreviousElement() {
+    protected SHPaperOnboardingPage toggleToPreviousElement() {
         if (mActiveElementIndex - 1 >= 0) {
             mActiveElementIndex--;
             return mElements.size() > mActiveElementIndex ? mElements.get(mActiveElementIndex) : null;
@@ -520,7 +681,7 @@ public class PaperOnboardingEngine implements PaperOnboardingEngineDefaults {
      *
      * @return content for next element
      */
-    protected PaperOnboardingPage toggleToNextElement() {
+    protected SHPaperOnboardingPage toggleToNextElement() {
         if (mActiveElementIndex + 1 < mElements.size()) {
             mActiveElementIndex++;
             return mElements.size() > mActiveElementIndex ? mElements.get(mActiveElementIndex) : null;
